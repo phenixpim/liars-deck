@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Liar's Deck — entre amis</title>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+  :root{
+    --bg:#140d0a; --wood:#2a1a12; --felt:#1f4d36; --felt2:#173b29; --gold:#e0b45a; --cream:#f3e9d2;
+    --red:#d2453b; --green:#4fbf7a; --muted:#a89a85; --card:#f7f1e3; --ink:#1d1611;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;background:radial-gradient(ellipse at top,#2b1a12,var(--bg) 70%);color:var(--cream);
+    font-family:Georgia,"Times New Roman",serif}
+  button{font-family:inherit;cursor:pointer;border:none;border-radius:12px;padding:14px 22px;font-size:18px;font-weight:bold;
+    background:var(--gold);color:var(--ink);transition:transform .08s,opacity .2s}
+  button:active{transform:scale(.97)}
+  button:disabled{opacity:.35;cursor:default}
+  button.ghost{background:transparent;color:var(--cream);border:2px solid var(--muted)}
+  button.danger{background:var(--red);color:#fff}
+  input{font-family:inherit;font-size:20px;padding:12px 14px;border-radius:10px;border:2px solid #5a4636;background:#1c130e;color:var(--cream);width:100%}
+  input:focus{outline:none;border-color:var(--gold)}
+  h1{font-size:clamp(34px,6vw,64px);margin:0;color:var(--gold);letter-spacing:2px;text-shadow:0 3px 0 #000}
+  .center{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:20px;text-align:center}
+  .sub{color:var(--muted);font-size:17px;max-width:520px}
+  .err{color:#ff8a7f;min-height:22px;font-size:16px}
+  .stack{display:flex;flex-direction:column;gap:12px;width:min(340px,100%)}
+  .row{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
+
+  /* Cards */
+  .card{width:64px;height:92px;border-radius:9px;background:var(--card);color:var(--ink);display:flex;flex-direction:column;
+    align-items:center;justify-content:center;box-shadow:0 3px 8px rgba(0,0,0,.5);border:2px solid #d8ccb0;position:relative;flex:none;user-select:none}
+  .card .v{font-size:34px;font-weight:bold;line-height:1}
+  .card .n{font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-top:4px}
+  .card.K .v{color:#7a2f1d}.card.Q .v{color:#8a2650}.card.A .v{color:#1d3a6b}
+  .card.J{background:linear-gradient(135deg,#f7f1e3,#e9d9ff)}.card.J .v{color:#6b2fa0}
+  .card.back{background:repeating-linear-gradient(45deg,#7a1f1f 0 6px,#5e1616 6px 12px);border-color:var(--gold)}
+  .card.big{width:110px;height:158px}.card.big .v{font-size:60px}.card.big .n{font-size:15px}
+  .card.bad{outline:4px solid var(--red)}.card.good{outline:4px solid var(--green)}
+  .card.mini{width:22px;height:32px;border-radius:4px;border-width:1px}
+
+  /* Host */
+  .host{min-height:100vh;display:grid;grid-template-rows:auto 1fr auto;gap:14px;padding:18px 24px}
+  .topbar{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
+  .codebox{background:#000a;border:2px solid var(--gold);border-radius:14px;padding:8px 18px;text-align:center}
+  .codebox .lbl{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:2px}
+  .codebox .code{font-size:40px;font-weight:bold;letter-spacing:8px;color:var(--gold);font-family:monospace}
+  .felt{background:radial-gradient(ellipse at center,var(--felt),var(--felt2));border:14px solid var(--wood);border-radius:200px;
+    box-shadow:inset 0 0 60px #0008,0 10px 40px #000a;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:14px;padding:30px;min-height:320px;position:relative}
+  .tablecard-lbl{font-size:16px;color:var(--cream);text-transform:uppercase;letter-spacing:3px}
+  .pile{display:flex;align-items:center;gap:10px;font-size:20px}
+  .pilecards{position:relative;width:80px;height:70px}
+  .pilecards .card{position:absolute;width:44px;height:64px}
+  .announce{font-size:24px;min-height:32px;text-align:center}
+  .seats{display:flex;gap:14px;justify-content:center;flex-wrap:wrap}
+  .seat{background:#0009;border:2px solid #4a3a2c;border-radius:14px;padding:12px 16px;min-width:170px;text-align:center;transition:all .2s}
+  .seat.turn{border-color:var(--gold);box-shadow:0 0 22px #e0b45a88;transform:translateY(-4px)}
+  .seat.dead{opacity:.35;filter:grayscale(1)}
+  .seat .nm{font-size:22px;font-weight:bold}
+  .hearts{font-size:20px;letter-spacing:2px;margin:4px 0}
+  .backs{display:flex;gap:3px;justify-content:center;min-height:32px}
+  .tag{font-size:13px;color:var(--muted)}
+  .tag.off{color:#ff8a7f}
+  .log{font-size:15px;color:var(--muted);text-align:center;min-height:20px}
+  .overlay{position:fixed;inset:0;background:#000c;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;z-index:10;padding:20px;text-align:center}
+  .verdict{font-size:clamp(40px,8vw,90px);font-weight:bold;letter-spacing:3px}
+  .verdict.lie{color:var(--red)}.verdict.truth{color:var(--green)}
+  .flip{animation:flip .5s ease both}
+  @keyframes flip{from{transform:rotateY(90deg)}to{transform:rotateY(0)}}
+  .lobbylist{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;min-height:60px}
+  .chip{background:#000a;border:2px solid var(--gold);border-radius:30px;padding:10px 20px;font-size:22px}
+  .chip.off{border-color:#555;color:#888}
+
+  /* Phone */
+  .phone{min-height:100vh;display:flex;flex-direction:column;padding:12px 12px calc(16px + env(safe-area-inset-bottom));gap:10px;max-width:560px;margin:0 auto}
+  .pinfo{display:flex;justify-content:space-between;align-items:center}
+  .pinfo .me{font-size:20px;font-weight:bold}
+  .mini-seats{display:flex;gap:6px;overflow-x:auto}
+  .ms{flex:1;min-width:80px;background:#0008;border:2px solid #4a3a2c;border-radius:10px;padding:6px;text-align:center;font-size:13px}
+  .ms.turn{border-color:var(--gold)}.ms.dead{opacity:.35}.ms.me{background:#2a1d10}
+  .ms b{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ptable{background:radial-gradient(ellipse,var(--felt),var(--felt2));border:6px solid var(--wood);border-radius:22px;padding:12px;display:flex;align-items:center;gap:14px}
+  .ptable .info{flex:1;font-size:16px}
+  .status{text-align:center;font-size:20px;font-weight:bold;min-height:28px}
+  .status.mine{color:var(--gold);animation:pulse 1.2s infinite}
+  @keyframes pulse{50%{opacity:.6}}
+  .hand{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;padding:14px 0 4px;min-height:120px}
+  .hand .card{width:58px;height:86px;cursor:pointer;transition:transform .12s}
+  .hand .card.sel{transform:translateY(-14px);box-shadow:0 0 0 3px var(--gold),0 8px 16px #000a}
+  .actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:auto}
+  .actions button{padding:18px 10px;font-size:19px}
+  .reveal-box{background:#000b;border:2px solid var(--gold);border-radius:14px;padding:12px;text-align:center}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+(() => {
+'use strict';
+const PREFIX = 'liarsdeck-fr-';
+const params = new URLSearchParams(location.search);
+const LOCAL = params.has('local'); // mode test : plusieurs onglets du même navigateur
+const MAX_PLAYERS = 4, MAX_LIVES = 3, HAND = 5, REVEAL_MS = 7000;
+const NAMES = {K:'Roi',Q:'Dame',A:'As',J:'Joker'};
+const PLUR = {K:'Rois',Q:'Dames',A:'As',J:'Jokers'};
+const SYM = {K:'R',Q:'D',A:'A',J:'★'};
+const app = document.getElementById('app');
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const store = { get(k){try{return localStorage.getItem(k)}catch(e){return null}}, set(k,v){try{localStorage.setItem(k,v)}catch(e){}} };
+const cardHTML = (c, extra='') => `<div class="card ${c.v} ${extra}" data-id="${c.id ?? ''}"><div class="v">${SYM[c.v]}</div><div class="n">${NAMES[c.v]}</div></div>`;
+const backHTML = (extra='') => `<div class="card back ${extra}"></div>`;
+const hearts = (n) => '❤️'.repeat(Math.max(0,n)) + '🖤'.repeat(Math.max(0,MAX_LIVES-n));
+const cartes = n => n + ' carte' + (n>1?'s':'');
+function claimText(n, v){ return n + ' ' + (n>1 ? PLUR[v] : NAMES[v]); }
+
+/* ---------------- Transport (PeerJS ou BroadcastChannel en local) ---------------- */
+function hostTransport(code, h){
+  if (LOCAL){
+    const bc = new BroadcastChannel('ld-'+code), conns = {};
+    bc.onmessage = e => {
+      const m = e.data; if (m.to !== 'host') return;
+      if (m.type === 'hello'){
+        const cb = {data:[], close:[]};
+        const conn = { send: d => bc.postMessage({to:m.from,type:'data',data:d}), on:(ev,fn)=>cb[ev].push(fn), _cb:cb, close(){ bc.postMessage({to:m.from,type:'kick'}); } };
+        conns[m.from] = conn; h.onConn(conn); bc.postMessage({to:m.from,type:'welcome'});
+      } else if (m.type === 'data' && conns[m.from]) conns[m.from]._cb.data.forEach(f=>f(m.data));
+      else if (m.type === 'bye' && conns[m.from]) { conns[m.from]._cb.close.forEach(f=>f()); delete conns[m.from]; }
+    };
+    setTimeout(h.onOpen, 0);
+    return;
+  }
+  const peer = new Peer(PREFIX + code);
+  peer.on('open', h.onOpen);
+  peer.on('connection', c => {
+    let closed = false;
+    const cb = {data:[], close:[]};
+    const fireClose = () => { if (closed) return; closed = true; cb.close.forEach(f=>f()); };
+    const conn = { send: d => { try{ if (c.open) c.send(d); }catch(e){} }, on:(ev,fn)=>cb[ev].push(fn), close(){ try{c.close()}catch(e){} } };
+    c.on('open', () => h.onConn(conn));
+    c.on('data', d => cb.data.forEach(f=>f(d)));
+    c.on('close', fireClose); c.on('error', fireClose);
+  });
+  peer.on('disconnected', () => { try{ peer.reconnect(); }catch(e){} });
+  peer.on('error', e => h.onError(e));
+}
+
+function clientTransport(code, h){
+  let done = false;
+  const timeout = setTimeout(() => { if(!done){ done = true; h.onError('Impossible de joindre la table. Vérifiez le code et votre connexion.'); } }, 12000);
+  if (LOCAL){
+    const id = Math.random().toString(36).slice(2), bc = new BroadcastChannel('ld-'+code);
+    bc.onmessage = e => { const m = e.data; if (m.to !== id) return;
+      if (m.type==='welcome'){ done = true; clearTimeout(timeout); h.onOpen(); }
+      else if (m.type==='data') h.onData(m.data);
+      else if (m.type==='kick') h.onClose(); };
+    bc.postMessage({to:'host',from:id,type:'hello'});
+    addEventListener('pagehide', () => bc.postMessage({to:'host',from:id,type:'bye'}));
+    return { send: d => bc.postMessage({to:'host',from:id,type:'data',data:d}), close(){ bc.postMessage({to:'host',from:id,type:'bye'}); bc.close(); } };
+  }
+  const peer = new Peer();
+  let c = null;
+  peer.on('open', () => {
+    c = peer.connect(PREFIX + code, {reliable:true});
+    c.on('open', () => { done = true; clearTimeout(timeout); h.onOpen(); });
+    c.on('data', h.onData);
+    const cl = () => { if (done) h.onClose(); };
+    c.on('close', cl); c.on('error', cl);
+  });
+  peer.on('error', e => {
+    if (!done){ done = true; clearTimeout(timeout);
+      h.onError(e && e.type==='peer-unavailable' ? 'Aucune table avec ce code. Vérifiez le code affiché sur le PC.' : 'Erreur de connexion ('+(e&&e.type||'?')+').'); }
+    else h.onClose();
+  });
+  return { send: d => { try{ if (c && c.open) c.send(d); }catch(e){} }, close(){ try{ peer.destroy(); }catch(e){} } };
+}
+
+/* ---------------- Accueil ---------------- */
+function home(){
+  if (!LOCAL && typeof Peer === 'undefined'){
+    app.innerHTML = `<div class="center"><h1>Oups</h1><div class="err">Le module de connexion n'a pas pu se charger. Vérifiez la connexion internet puis rechargez la page.</div><button onclick="location.reload()">Recharger</button></div>`;
+    return;
+  }
+  const urlCode = (params.get('code') || location.hash.slice(1) || '').toUpperCase().replace(/[^A-Z]/g,'').slice(0,4);
+  if (urlCode) return joinScreen(urlCode);
+  app.innerHTML = `<div class="center">
+    <h1>LIAR'S DECK</h1>
+    <div class="sub">Rois, Dames, As et Jokers. Bluffez, accusez, survivez.</div>
+    <div class="stack">
+      <button id="bHost">🖥️ Créer la table (PC)</button>
+      <button id="bJoin" class="ghost">📱 Rejoindre (téléphone)</button>
+    </div>
+    ${LOCAL ? '<div class="tag">Mode test local</div>' : ''}
+  </div>`;
+  document.getElementById('bHost').onclick = startHost;
+  document.getElementById('bJoin').onclick = () => joinScreen('');
+}
+
+/* ===================================================================== */
+/* =============================== HÔTE ================================ */
+/* ===================================================================== */
+function startHost(){
+  const L = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const code = Array.from({length:4}, () => L[Math.floor(Math.random()*L.length)]).join('');
+  app.innerHTML = `<div class="center"><h1>LIAR'S DECK</h1><div class="sub">Ouverture de la table…</div></div>`;
+  const G = { code, phase:'lobby', players:[], table:null, turn:0, last:null, pile:[], reveal:null, winner:null, log:'', round:0 };
+  let timer = null;
+
+  hostTransport(code, {
+    onOpen: () => renderHost(),
+    onError: e => {
+      if (e && e.type === 'unavailable-id') return startHost();
+      if (G.phase === 'lobby' && !G.players.length)
+        app.innerHTML = `<div class="center"><h1>Oups</h1><div class="err">Impossible d'ouvrir la table (${esc(e && e.type || e)}). Vérifiez la connexion internet du PC.</div><button onclick="location.reload()">Réessayer</button></div>`;
+    },
+    onConn: conn => {
+      conn.on('data', msg => handle(conn, msg));
+      conn.on('close', () => {
+        const p = G.players.find(p => p.conn === conn);
+        if (!p) return;
+        p.conn = null; p.connected = false;
+        if (G.phase === 'lobby') G.players.splice(G.players.indexOf(p), 1);
+        sync();
+      });
+    }
+  });
+
+  function handle(conn, msg){
+    if (!msg || typeof msg !== 'object') return;
+    if (msg.t === 'join'){
+      const name = String(msg.name || '').trim().slice(0,14);
+      if (!name) return conn.send({t:'err', msg:'Choisissez un pseudo.'});
+      const ex = G.players.find(p => p.name.toLowerCase() === name.toLowerCase());
+      if (ex){
+        if (ex.conn && ex.conn !== conn && G.phase === 'lobby') return conn.send({t:'err', msg:'Ce pseudo est déjà pris.'});
+        if (ex.conn && ex.conn !== conn) { const old = ex.conn; ex.conn = null; try{ old.close(); }catch(e){} }
+        ex.conn = conn; ex.connected = true;
+      } else {
+        if (G.phase !== 'lobby') return conn.send({t:'err', msg:'La partie a déjà commencé. Seuls les joueurs de la partie peuvent revenir (même pseudo).'});
+        if (G.players.length >= MAX_PLAYERS) return conn.send({t:'err', msg:'La table est pleine (4 joueurs max).'});
+        G.players.push({name, lives:MAX_LIVES, hand:[], alive:true, conn, connected:true});
+      }
+      return sync();
+    }
+    const pi = G.players.findIndex(p => p.conn === conn);
+    if (pi < 0) return;
+    if (msg.t === 'play') play(pi, msg.ids);
+    else if (msg.t === 'liar') liar(pi);
+  }
+
+  function shuffle(a){ for (let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+  const order = {K:0,Q:1,A:2,J:3};
+  function aliveIdx(){ return G.players.map((p,i)=>p.alive?i:-1).filter(i=>i>=0); }
+
+  function startGame(){
+    G.players.forEach(p => { p.lives = MAX_LIVES; p.alive = true; p.hand = []; });
+    G.winner = null; G.round = 0;
+    newRound(Math.floor(Math.random()*G.players.length));
+  }
+
+  function newRound(starter){
+    clearTimeout(timer); timer = null;
+    const deck = [];
+    let id = 0;
+    for (const v of ['K','Q','A']) for (let i=0;i<6;i++) deck.push({id:id++, v});
+    deck.push({id:id++, v:'J'}, {id:id++, v:'J'});
+    shuffle(deck);
+    G.players.forEach(p => { p.hand = p.alive ? deck.splice(0, HAND).sort((a,b)=>order[a.v]-order[b.v]) : []; });
+    G.table = ['K','Q','A'][Math.floor(Math.random()*3)];
+    G.pile = []; G.last = null; G.reveal = null; G.phase = 'play'; G.round++;
+    let s = starter % G.players.length;
+    while (!G.players[s].alive) s = (s+1) % G.players.length;
+    G.turn = s;
+    G.log = `Manche ${G.round} : table des ${PLUR[G.table]}. ${G.players[s].name} commence.`;
+    sync();
+  }
+
+  function nextActor(from){
+    const n = G.players.length;
+    for (let i=1;i<n;i++){ const k=(from+i)%n, p=G.players[k]; if (p.alive && p.hand.length) return k; }
+    for (let i=1;i<n;i++){ const k=(from+i)%n; if (G.players[k].alive) return k; }
+    return from;
+  }
+
+  function play(pi, ids){
+    if (G.phase !== 'play' || G.turn !== pi || !Array.isArray(ids)) return;
+    const p = G.players[pi];
+    const uniq = [...new Set(ids)];
+    if (uniq.length < 1 || uniq.length > 3) return;
+    const cards = uniq.map(id => p.hand.find(c => c.id === id));
+    if (cards.some(c => !c)) return;
+    p.hand = p.hand.filter(c => !uniq.includes(c.id));
+    G.last = {player:pi, cards};
+    G.pile.push(...cards);
+    G.turn = nextActor(pi);
+    const nx = G.players[G.turn];
+    G.log = `${p.name} pose ${cartes(cards.length)} : « ${claimText(cards.length, G.table)} ».` +
+      (nx.hand.length ? '' : ` ${nx.name} n'a plus de cartes : il doit dire « Menteur ! ».`);
+    sync();
+  }
+
+  function liar(pi){
+    if (G.phase !== 'play' || G.turn !== pi || !G.last || G.last.player === pi) return;
+    const accused = G.last.player;
+    const lying = G.last.cards.some(c => c.v !== G.table && c.v !== 'J');
+    const loser = lying ? accused : pi;
+    const L = G.players[loser];
+    L.lives--;
+    const eliminated = L.lives <= 0;
+    if (eliminated){ L.alive = false; L.hand = []; }
+    G.reveal = {accuser:pi, accused, cards:G.last.cards, lying, loser, eliminated};
+    G.log = lying ? `${G.players[accused].name} mentait ! Il perd une vie.` : `${G.players[accused].name} disait la vérité ! ${G.players[pi].name} perd une vie.`;
+    if (eliminated) G.log += ` ${L.name} est éliminé.`;
+    const alive = aliveIdx();
+    if (alive.length <= 1){
+      G.phase = 'over'; G.winner = alive.length ? alive[0] : null;
+    } else {
+      G.phase = 'reveal';
+      timer = setTimeout(() => newRound(loser), REVEAL_MS);
+    }
+    sync();
+  }
+
+  function pub(){
+    return {
+      code:G.code, phase:G.phase, table:G.table, turn:G.turn, round:G.round, log:G.log, winner:G.winner,
+      last: G.last ? {player:G.last.player, count:G.last.cards.length} : null,
+      pileCount: G.pile.length, reveal: G.reveal,
+      players: G.players.map(p => ({name:p.name, lives:p.lives, cards:p.hand.length, alive:p.alive, connected:p.connected}))
+    };
+  }
+
+  function sync(){
+    const P = pub();
+    G.players.forEach((p, i) => { if (p.conn) p.conn.send({t:'state', pub:P, me:i, hand:p.hand}); });
+    renderHost();
+  }
+
+  let lastRevealKey = null;
+  function renderHost(){
+    const P = pub();
+    const joinUrl = /^https?:/.test(location.protocol) ? location.origin + location.pathname + '?code=' + G.code + (LOCAL ? '&local' : '') : '';
+    const codeBox = `<div class="codebox"><div class="lbl">Code de la table</div><div class="code">${G.code}</div></div>`;
+
+    if (G.phase === 'lobby'){
+      const conn = G.players.filter(p=>p.connected).length;
+      app.innerHTML = `<div class="center">
+        <h1>LIAR'S DECK</h1>
+        ${codeBox}
+        <div class="sub">Sur chaque téléphone, ouvrez ${joinUrl ? `<b style="color:var(--cream)">${esc(joinUrl)}</b>` : 'cette même page'} puis choisissez <b>Rejoindre</b> et tapez le code.</div>
+        <div class="lobbylist">${G.players.length ? G.players.map(p=>`<div class="chip ${p.connected?'':'off'}">${esc(p.name)}</div>`).join('') : '<div class="tag">En attente de joueurs… (2 à 4)</div>'}</div>
+        <div class="tag">${G.players.length}/${MAX_PLAYERS} joueurs · ${MAX_LIVES} vies chacun</div>
+        <button id="bStart" ${conn>=2?'':'disabled'}>Lancer la partie</button>
+        <div class="sub" style="font-size:14px">Règles : une carte de table (Roi, Dame ou As) est tirée. À tour de rôle, chacun pose 1 à 3 cartes face cachée en prétendant que ce sont des cartes de table. Les Jokers comptent toujours comme bons. Le joueur suivant peut jouer ou crier « Menteur ! ». Celui qui a tort perd une vie. Dernier survivant gagne.</div>
+      </div>`;
+      document.getElementById('bStart').onclick = startGame;
+      return;
+    }
+
+    const n = Math.min(P.pileCount, 12);
+    const pileCards = Array.from({length:n}, (_,i)=>`<div class="card back" style="left:${(i%4)*8}px;top:${Math.floor(i/4)*3}px;transform:rotate(${(i*37%21)-10}deg)"></div>`).join('');
+    const lastTxt = P.last ? `${esc(P.players[P.last.player].name)} annonce <b>${claimText(P.last.count, P.table)}</b>` : `<span class="tag">Aucune carte posée</span>`;
+    const seats = P.players.map((p,i)=>{
+      const turn = P.phase==='play' && P.turn===i;
+      return `<div class="seat ${turn?'turn':''} ${p.alive?'':'dead'}">
+        <div class="nm">${esc(p.name)}</div>
+        <div class="hearts">${hearts(p.lives)}</div>
+        <div class="backs">${Array.from({length:p.cards},()=>backHTML('mini')).join('')}</div>
+        <div class="tag ${p.connected?'':'off'}">${!p.alive?'Éliminé':!p.connected?'Déconnecté…':turn?'▶ à son tour':cartes(p.cards)}</div>
+      </div>`;
+    }).join('');
+
+    let overlay = '';
+    if ((P.phase==='reveal' || P.phase==='over') && P.reveal){
+      const r = P.reveal;
+      const key = P.round + '-' + r.loser;
+      const anim = key !== lastRevealKey ? 'flip' : ''; lastRevealKey = key;
+      overlay = `<div class="overlay">
+        <div class="tag" style="font-size:20px">${esc(P.players[r.accuser].name)} accuse ${esc(P.players[r.accused].name)}</div>
+        <div class="row">${r.cards.map((c,i)=>`<div style="animation-delay:${i*.25}s" class="${anim}">${cardHTML(c, 'big ' + ((c.v===P.table||c.v==='J')?'good':'bad'))}</div>`).join('')}</div>
+        <div class="verdict ${r.lying?'lie':'truth'}">${r.lying?'MENTEUR !':'VÉRITÉ !'}</div>
+        <div style="font-size:26px">${esc(P.players[r.loser].name)} perd une vie ${r.eliminated?'et il est <b style="color:var(--red)">ÉLIMINÉ</b> 💀':'(' + hearts(P.players[r.loser].lives) + ')'}</div>
+        ${P.phase==='over'
+          ? `<div class="verdict" style="color:var(--gold)">🏆 ${P.winner!=null?esc(P.players[P.winner].name)+' gagne !':'Fin de partie'}</div>
+             <div class="row"><button id="bAgain">Nouvelle partie</button><button class="ghost" id="bLobby">Retour au salon</button></div>`
+          : `<button class="ghost" id="bNext">Manche suivante ▶</button>`}
+      </div>`;
+    }
+
+    app.innerHTML = `<div class="host">
+      <div class="topbar">
+        <h1 style="font-size:34px">LIAR'S DECK</h1>
+        <div class="tag" style="font-size:18px">Manche ${P.round}</div>
+        ${codeBox}
+      </div>
+      <div class="felt">
+        <div class="tablecard-lbl">Table des ${PLUR[P.table]}</div>
+        ${cardHTML({v:P.table}, 'big')}
+        <div class="pile"><div class="pilecards">${pileCards}</div><span>${cartes(P.pileCount)} sur la table</span></div>
+        <div class="announce">${lastTxt}</div>
+        <div class="log">${esc(P.log)}</div>
+      </div>
+      <div class="seats">${seats}</div>
+    </div>${overlay}`;
+    const bn = document.getElementById('bNext'); if (bn) bn.onclick = () => newRound(G.reveal.loser);
+    const ba = document.getElementById('bAgain'); if (ba) ba.onclick = startGame;
+    const bl = document.getElementById('bLobby'); if (bl) bl.onclick = () => {
+      G.phase = 'lobby'; G.players = G.players.filter(p=>p.connected);
+      G.players.forEach(p=>{p.lives=MAX_LIVES;p.alive=true;p.hand=[];}); sync();
+    };
+  }
+}
+
+/* ===================================================================== */
+/* ============================== JOUEUR =============================== */
+/* ===================================================================== */
+function joinScreen(code, error){
+  const savedName = store.get('ld-name') || '';
+  app.innerHTML = `<div class="center">
+    <h1>LIAR'S DECK</h1>
+    <div class="sub">Rejoindre une table</div>
+    <form class="stack" id="f">
+      <input id="code" placeholder="Code (ex : ABCD)" maxlength="4" autocapitalize="characters" autocomplete="off" value="${esc(code)}" style="text-transform:uppercase;letter-spacing:6px;text-align:center;font-family:monospace;font-size:28px">
+      <input id="name" placeholder="Ton pseudo" maxlength="14" autocomplete="off" value="${esc(savedName)}">
+      <button type="submit">Rejoindre</button>
+      <div class="err">${esc(error||'')}</div>
+    </form>
+  </div>`;
+  document.getElementById('f').onsubmit = e => {
+    e.preventDefault();
+    const c = document.getElementById('code').value.toUpperCase().replace(/[^A-Z]/g,'');
+    const n = document.getElementById('name').value.trim();
+    if (c.length !== 4) return joinScreen(c, 'Le code fait 4 lettres.');
+    if (!n) return joinScreen(c, 'Choisis un pseudo.');
+    store.set('ld-name', n);
+    startClient(c, n);
+  };
+}
+
+function startClient(code, name){
+  let S = null, hand = [], me = -1, sel = new Set(), wasMyTurn = false, retries = 0, gotErr = false, tr = null;
+  app.innerHTML = `<div class="center"><h1>LIAR'S DECK</h1><div class="sub">Connexion à la table ${esc(code)}…</div></div>`;
+
+  function connect(){
+    tr = clientTransport(code, {
+      onOpen: () => { retries = 0; tr.send({t:'join', name}); },
+      onData: msg => {
+        if (msg.t === 'err'){ gotErr = true; tr.close(); joinScreen(code, msg.msg); return; }
+        if (msg.t === 'state'){
+          S = msg.pub; me = msg.me; hand = msg.hand;
+          const ids = new Set(hand.map(c=>c.id)); sel.forEach(id => { if(!ids.has(id)) sel.delete(id); });
+          render();
+        }
+      },
+      onClose: () => lost(),
+      onError: m => { if (S) lost(); else joinScreen(code, m); }
+    });
+  }
+  function lost(){
+    if (gotErr) return;
+    app.innerHTML = `<div class="center"><h1>Connexion perdue</h1><div class="sub">Reconnexion automatique…</div><button id="bR">Reconnecter maintenant</button></div>`;
+    document.getElementById('bR').onclick = () => { try{tr.close()}catch(e){} connect(); };
+    if (retries++ < 20) setTimeout(() => { if (document.getElementById('bR')) { try{tr.close()}catch(e){} connect(); } }, 3000);
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && document.getElementById('bR')) { try{tr.close()}catch(e){} connect(); }
+  });
+  connect();
+
+  function render(){
+    const P = S, my = P.players[me];
+    if (P.phase === 'lobby'){
+      wasMyTurn = false;
+      app.innerHTML = `<div class="center">
+        <h1>LIAR'S DECK</h1>
+        <div class="sub">Connecté à la table <b style="color:var(--gold)">${esc(P.code)}</b> en tant que <b style="color:var(--cream)">${esc(my.name)}</b></div>
+        <div class="lobbylist">${P.players.map(p=>`<div class="chip">${esc(p.name)}</div>`).join('')}</div>
+        <div class="tag">En attente du lancement depuis le PC…</div>
+      </div>`;
+      return;
+    }
+    const myTurn = P.phase==='play' && P.turn===me && my.alive;
+    if (myTurn && !wasMyTurn){ try{ navigator.vibrate && navigator.vibrate([120,60,120]); }catch(e){} }
+    wasMyTurn = myTurn;
+    const canLiar = myTurn && P.last && P.last.player !== me;
+    const canPlay = myTurn && hand.length > 0 && sel.size >= 1 && sel.size <= 3;
+
+    let status;
+    if (!my.alive) status = '💀 Tu es éliminé : regarde la table !';
+    else if (P.phase==='over') status = '🏆 ' + (P.winner===me ? 'Tu as gagné !' : (P.winner!=null ? esc(P.players[P.winner].name)+' a gagné' : 'Fin de partie'));
+    else if (P.phase==='reveal') status = 'Révélation…';
+    else if (myTurn) status = hand.length ? 'À toi de jouer !' : 'Plus de cartes : dis « Menteur ! »';
+    else status = `Au tour de ${esc(P.players[P.turn].name)}`;
+
+    let reveal = '';
+    if ((P.phase==='reveal'||P.phase==='over') && P.reveal){
+      const r = P.reveal;
+      reveal = `<div class="reveal-box">
+        <div class="row" style="gap:6px">${r.cards.map(c=>cardHTML(c, (c.v===P.table||c.v==='J')?'good':'bad')).join('')}</div>
+        <div style="font-size:20px;margin-top:8px;color:${r.lying?'var(--red)':'var(--green)'}"><b>${r.lying?'MENTEUR !':'VÉRITÉ !'}</b></div>
+        <div>${esc(P.players[r.loser].name)} perd une vie${r.eliminated?' et il est éliminé 💀':''}</div>
+      </div>`;
+    }
+
+    app.innerHTML = `<div class="phone">
+      <div class="pinfo"><span class="me">${esc(my.name)}</span><span class="hearts">${hearts(my.lives)}</span></div>
+      <div class="mini-seats">${P.players.map((p,i)=>`<div class="ms ${P.phase==='play'&&P.turn===i?'turn':''} ${p.alive?'':'dead'} ${i===me?'me':''}">
+        <b>${esc(p.name)}${i===me?' (toi)':''}</b>${hearts(p.lives)}<br>${p.alive?cartes(p.cards):'éliminé'}${p.connected?'':' ⚠️'}</div>`).join('')}</div>
+      <div class="ptable">
+        ${cardHTML({v:P.table})}
+        <div class="info"><div class="tag">Table des</div><div style="font-size:24px;font-weight:bold">${PLUR[P.table]}</div>
+          <div style="margin-top:6px">${P.last ? `${esc(P.players[P.last.player].name)} annonce <b>${claimText(P.last.count, P.table)}</b>` : 'Aucune carte posée'}</div></div>
+      </div>
+      ${reveal}
+      <div class="status ${myTurn?'mine':''}">${status}</div>
+      <div class="hand" id="hand">${hand.map(c=>cardHTML(c, sel.has(c.id)?'sel':'')).join('') || (my.alive ? '<div class="tag">Ta main est vide</div>' : '')}</div>
+      ${my.alive && P.phase==='play' ? `<div class="actions">
+        <button id="bPlay" ${canPlay?'':'disabled'}>Poser ${sel.size||''}${sel.size?' '+(sel.size>1?PLUR[P.table]:NAMES[P.table]):''}</button>
+        <button id="bLiar" class="danger" ${canLiar?'':'disabled'}>MENTEUR !</button>
+      </div>` : ''}
+    </div>`;
+
+    document.querySelectorAll('#hand .card').forEach(el => el.onclick = () => {
+      const id = Number(el.dataset.id);
+      if (sel.has(id)) sel.delete(id); else if (sel.size < 3) sel.add(id);
+      render();
+    });
+    const bp = document.getElementById('bPlay');
+    if (bp) bp.onclick = () => { if (!canPlay) return; tr.send({t:'play', ids:[...sel]}); sel.clear(); };
+    const bl = document.getElementById('bLiar');
+    if (bl) bl.onclick = () => { if (canLiar) tr.send({t:'liar'}); };
+  }
+}
+
+home();
+})();
+</script>
+</body>
+</html>
